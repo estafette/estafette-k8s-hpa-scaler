@@ -307,6 +307,11 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 		hpa.Metadata.Annotations[annotationHPAScalerState] = string(hpaScalerStateByteArray)
 		hpa.Spec.MinReplicas = &targetNumberOfMinReplicas
 
+		if *hpa.Spec.MinReplicas >= *hpa.Spec.MaxReplicas {
+			targetNumberOfMaxReplicas := *hpa.Spec.MinReplicas + int32(1)
+			hpa.Spec.MaxReplicas = &targetNumberOfMaxReplicas
+		}
+
 		// update hpa, because the data and state annotation have changed
 		hpa, err = kubeClient.AutoscalingV1().UpdateHorizontalPodAutoscaler(context.Background(), hpa)
 		if err != nil {
