@@ -234,6 +234,11 @@ func getDesiredHorizontalPodAutoscalerState(hpa *autoscalingv1.HorizontalPodAuto
 func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, initiator string, desiredState HPAScalerState) (status string, err error) {
 
 	prometheusServerURL := os.Getenv("PROMETHEUS_SERVER_URL")
+	minimumReplicasLowerBoundString := os.Getenv("MINIMUM_REPLICAS_LOWER_BOUND")
+	minimumReplicasLowerBound := int32(3)
+	if i, err := strconv.ParseInt(minimumReplicasLowerBoundString, 0, 32); err != nil {
+		minimumReplicasLowerBound = int32(i)
+	}
 
 	status = "failed"
 
@@ -271,6 +276,10 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 
 		// calculate target # of replicas
 		targetNumberOfMinReplicas := int32(math.Ceil(requestRate / desiredState.RequestsPerReplica))
+		if targetNumberOfMinReplicas > minimumReplicasLowerBound {
+			targetNumberOfMinReplicas = minimumReplicasLowerBound
+		}
+
 		currentNumberOfMinReplicas := *hpa.Spec.MinReplicas
 		actualNumberOfReplicas := *hpa.Status.CurrentReplicas
 

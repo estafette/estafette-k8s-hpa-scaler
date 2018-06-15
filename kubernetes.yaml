@@ -57,6 +57,8 @@ spec:
         env:
         - name: "PROMETHEUS_SERVER_URL"
           value: "${PROMETHEUS_SERVER_URL}"
+        - name: "MINIMUM_REPLICAS_LOWER_BOUND"
+          value: "${MINIMUM_REPLICAS_LOWER_BOUND}"
         resources:
           requests:
             cpu: ${CPU_REQUEST}
