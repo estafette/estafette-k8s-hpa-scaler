@@ -89,6 +89,7 @@ var (
 
 func init() {
 	// metrics have to be registered to be exposed
+	prometheus.MustRegister(hpaTotals)
 	prometheus.MustRegister(minReplicasVector)
 	prometheus.MustRegister(actualReplicasVector)
 	prometheus.MustRegister(requestRateVector)

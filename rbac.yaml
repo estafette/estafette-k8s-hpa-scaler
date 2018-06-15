@@ -5,9 +5,9 @@ metadata:
   labels:
     app: estafette-k8s-hpa-scaler
 rules:
-- apiGroups: [""] # "" indicates the core API group
+- apiGroups: ["autoscaling"] # "" indicates the core API group
   resources:
-  - hpa
+  - horizontalpodautoscalers
   verbs:
   - list
   - update
