@@ -6,9 +6,9 @@ This controller can set min and max pods of a HorizontalPodAutoscaler based on a
 
 ## Why?
 
-With cpu based autoscaling an application can suddenly scale down if requests start erroring if that consumes less cpu; to recover after tackling the source of the error the application need to scale up again. This controller keeps it at minimum number of pods calculated from a Prometheus query.
+With cpu based autoscaling an application can suddenly scale down if requests start erroring and the application consumes less cpu as a result of that; to recover after tackling the source of the error the application needs to scale up again. This controller sets the minimum number of pods calculated from a Prometheus query in order to act as a safety net in these unusual circumstances.
 
-If your application is further down the call stack an error in one of the upstream applications can drop the number of requests coming into your application, again making it harder to recover after the issue is resolved. To guard yourself against those unwanted scale downs you can use the request rate towards the outermost application as your source query to base your scale on.
+Similar if your application is further down the call stack an error in one of the upstream applications can drop the number of requests coming into your application, again making it harder to recover after the issue is resolved. To guard yourself against those unwanted scale down actions you can use the request rate towards the outermost application as your source query to base your scale on.
 
 ## Usage
 
@@ -46,4 +46,13 @@ metadata:
     estafette.io/hpa-scaler: "true"
     estafette.io/hpa-scaler-prometheus-query: "sum(rate(nginx_http_requests_total{app='my-app'}[5m])) by (app)"
     estafette.io/hpa-scaler-requests-per-replica: "2.5"
+    estafette.io/hpa-scaler-delta: "-0.5"
 ```
+
+With these values the following formula is used to calculate the `minReplicas` value for the `HorizontalPodAutoscaler`:
+
+```
+minReplicas = Ceiling ( delta + ( resultFromQuery / requestsPerReplica ) )
+```
+
+By tuning the `delta` and `requestsPerReplica` values it should be possible to follow the curve of the number of requests coming out of the Prometheus query closely and stay just below the number of replicas that the `HorizontalPodAutoscaler` would come up with under normal circumstances. If the curve is higher you're wasting resources, if it's much lower than it provides less safety.

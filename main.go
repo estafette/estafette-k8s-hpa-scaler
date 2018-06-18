@@ -34,6 +34,7 @@ import (
 const annotationHPAScaler string = "estafette.io/hpa-scaler"
 const annotationHPAScalerPrometheusQuery string = "estafette.io/hpa-scaler-prometheus-query"
 const annotationHPAScalerRequestsPerReplica string = "estafette.io/hpa-scaler-requests-per-replica"
+const annotationHPAScalerDelta string = "estafette.io/hpa-scaler-delta"
 
 const annotationHPAScalerState string = "estafette.io/hpa-scaler-state"
 
@@ -42,6 +43,7 @@ type HPAScalerState struct {
 	Enabled            string  `json:"enabled"`
 	PrometheusQuery    string  `json:"prometheusQuery"`
 	RequestsPerReplica float64 `json:"requestsPerReplica"`
+	Delta              float64 `json:"delta"`
 	LastUpdated        string  `json:"lastUpdated"`
 }
 
@@ -228,6 +230,17 @@ func getDesiredHorizontalPodAutoscalerState(hpa *autoscalingv1.HorizontalPodAuto
 			state.RequestsPerReplica = 1
 		}
 	}
+	deltaString, ok := hpa.Metadata.Annotations[annotationHPAScalerDelta]
+	if !ok {
+		state.Delta = 0
+	} else {
+		i, err := strconv.ParseFloat(deltaString, 64)
+		if err == nil {
+			state.Delta = i
+		} else {
+			state.Delta = 0
+		}
+	}
 
 	return
 }
@@ -276,7 +289,7 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 		}
 
 		// calculate target # of replicas
-		targetNumberOfMinReplicas := int32(math.Ceil(requestRate / desiredState.RequestsPerReplica))
+		targetNumberOfMinReplicas := int32(math.Ceil(desiredState.Delta + requestRate/desiredState.RequestsPerReplica))
 		if targetNumberOfMinReplicas > minimumReplicasLowerBound {
 			targetNumberOfMinReplicas = minimumReplicasLowerBound
 		}
