@@ -288,9 +288,19 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 			return status, err
 		}
 
+		log.Debug().
+			Float64("requestRate", requestRate).
+			Float64("desiredState.RequestsPerReplica", desiredState.RequestsPerReplica).
+			Float64("desiredState.Delta", desiredState.Delta).
+			Float64("requestRate/desiredState.RequestsPerReplica", requestRate/desiredState.RequestsPerReplica).
+			Float64("desiredState.Delta + requestRate/desiredState.RequestsPerReplica", desiredState.Delta+requestRate/desiredState.RequestsPerReplica).
+			Float64("math.Ceil(desiredState.Delta + requestRate/desiredState.RequestsPerReplica)", math.Ceil(desiredState.Delta+requestRate/desiredState.RequestsPerReplica)).
+			Int32("int32(math.Ceil(desiredState.Delta + requestRate/desiredState.RequestsPerReplica))", int32(math.Ceil(desiredState.Delta+requestRate/desiredState.RequestsPerReplica))).
+			Msgf("Calculated values for hpa %v in namespace %v", *hpa.Metadata.Name, *hpa.Metadata.Namespace)
+
 		// calculate target # of replicas
 		targetNumberOfMinReplicas := int32(math.Ceil(desiredState.Delta + requestRate/desiredState.RequestsPerReplica))
-		if targetNumberOfMinReplicas > minimumReplicasLowerBound {
+		if targetNumberOfMinReplicas < minimumReplicasLowerBound {
 			targetNumberOfMinReplicas = minimumReplicasLowerBound
 		}
 
