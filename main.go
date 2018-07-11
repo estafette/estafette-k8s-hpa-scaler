@@ -250,7 +250,7 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 
 	var ok bool
 
-	prometheusServerURL, ok = hpa.Metadata.Annotations[annotationHPAScalerPrometheusServerURL]
+	prometheusServerURL, ok := hpa.Metadata.Annotations[annotationHPAScalerPrometheusServerURL]
 	if !ok {
 		prometheusServerURL := os.Getenv("PROMETHEUS_SERVER_URL")
 	}
