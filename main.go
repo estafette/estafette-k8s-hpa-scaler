@@ -248,12 +248,6 @@ func getDesiredHorizontalPodAutoscalerState(hpa *autoscalingv1.HorizontalPodAuto
 
 func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, initiator string, desiredState HPAScalerState) (status string, err error) {
 
-	var ok bool
-
-	prometheusServerURL, ok := hpa.Metadata.Annotations[annotationHPAScalerPrometheusServerURL]
-	if !ok {
-		prometheusServerURL := os.Getenv("PROMETHEUS_SERVER_URL")
-	}
 	minimumReplicasLowerBoundString := os.Getenv("MINIMUM_REPLICAS_LOWER_BOUND")
 	minimumReplicasLowerBound := int32(3)
 	if i, err := strconv.ParseInt(minimumReplicasLowerBoundString, 0, 32); err != nil {
@@ -264,6 +258,11 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 
 	// check if hpa-scaler is enabled for this hpa and query is not empty and requests per replica larger than zero
 	if desiredState.Enabled == "true" && len(desiredState.PrometheusQuery) > 0 && desiredState.RequestsPerReplica > 0 {
+		var ok bool
+		prometheusServerURL, ok := hpa.Metadata.Annotations[annotationHPAScalerPrometheusServerURL]
+		if !ok {
+			prometheusServerURL := os.Getenv("PROMETHEUS_SERVER_URL")
+		}
 
 		// get request rate with prometheus query
 		// http://prometheus.production.svc/api/v1/query?query=sum%28rate%28nginx_http_requests_total%7Bhost%21~%22%5E%28%3F%3A%5B0-9.%5D%2B%29%24%22%2Clocation%3D%22%40searchfareapi_gcloud%22%7D%5B10m%5D%29%29%20by%20%28location%29
