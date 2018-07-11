@@ -35,6 +35,7 @@ const annotationHPAScaler string = "estafette.io/hpa-scaler"
 const annotationHPAScalerPrometheusQuery string = "estafette.io/hpa-scaler-prometheus-query"
 const annotationHPAScalerRequestsPerReplica string = "estafette.io/hpa-scaler-requests-per-replica"
 const annotationHPAScalerDelta string = "estafette.io/hpa-scaler-delta"
+const annotationHPAScalerPrometheusServerURL = "estafette.io/hpa-scaler-prometheus-server-url"
 
 const annotationHPAScalerState string = "estafette.io/hpa-scaler-state"
 
@@ -247,7 +248,12 @@ func getDesiredHorizontalPodAutoscalerState(hpa *autoscalingv1.HorizontalPodAuto
 
 func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, initiator string, desiredState HPAScalerState) (status string, err error) {
 
-	prometheusServerURL := os.Getenv("PROMETHEUS_SERVER_URL")
+	var ok bool
+
+	prometheusServerURL, ok = hpa.Metadata.Annotations[annotationHPAScalerPrometheusServerURL]
+	if !ok {
+		prometheusServerURL := os.Getenv("PROMETHEUS_SERVER_URL")
+	}
 	minimumReplicasLowerBoundString := os.Getenv("MINIMUM_REPLICAS_LOWER_BOUND")
 	minimumReplicasLowerBound := int32(3)
 	if i, err := strconv.ParseInt(minimumReplicasLowerBoundString, 0, 32); err != nil {
