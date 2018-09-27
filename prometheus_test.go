@@ -7,7 +7,6 @@ import (
 )
 
 func TestUnmarshalPrometheusQueryResponse(t *testing.T) {
-
 	t.Run("ReturnsUnmarshalledResponse", func(t *testing.T) {
 
 		responseBody := []byte("{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":{\"location\":\"@searchfareapi_gcloud\"},\"value\":[1513161148.757,\"225.4068155675859\"]}]}}")
@@ -24,7 +23,6 @@ func TestUnmarshalPrometheusQueryResponse(t *testing.T) {
 }
 
 func TestGetRequestRate(t *testing.T) {
-
 	t.Run("ReturnsQueryValueAsFloat64", func(t *testing.T) {
 
 		queryResponse := PrometheusQueryResponse{
@@ -45,5 +43,37 @@ func TestGetRequestRate(t *testing.T) {
 
 		assert.Nil(t, err)
 		assert.Equal(t, 225.4068155675859, floatValue)
+	})
+
+	t.Run("ReturnsErrorIfResultIsMissing", func(t *testing.T) {
+
+		queryResponse := PrometheusQueryResponse{
+			Data: PrometheusQueryResponseData{
+				Result: []PrometheusQueryResponseDataResult{},
+			},
+		}
+
+		// act
+		_, err := queryResponse.GetRequestRate()
+
+		assert.NotNil(t, err)
+	})
+
+	t.Run("ReturnsErrorIfValueMissing", func(t *testing.T) {
+
+		queryResponse := PrometheusQueryResponse{
+			Data: PrometheusQueryResponseData{
+				Result: []PrometheusQueryResponseDataResult{
+					PrometheusQueryResponseDataResult{
+						Value: []interface{}{},
+					},
+				},
+			},
+		}
+
+		// act
+		_, err := queryResponse.GetRequestRate()
+
+		assert.NotNil(t, err)
 	})
 }

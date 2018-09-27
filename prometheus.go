@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"strconv"
 
 	"github.com/rs/zerolog/log"
@@ -31,7 +32,6 @@ type PrometheusQueryResponse struct {
 
 // UnmarshalPrometheusQueryResponse unmarshals the response for a prometheus query
 func UnmarshalPrometheusQueryResponse(responseBody []byte) (queryResponse PrometheusQueryResponse, err error) {
-
 	if err = json.Unmarshal(responseBody, &queryResponse); err != nil {
 		log.Error().Err(err).Msg("Failed unmarshalling prometheus query response")
 		return
@@ -44,6 +44,10 @@ func UnmarshalPrometheusQueryResponse(responseBody []byte) (queryResponse Promet
 
 // GetRequestRate converts the string value into a float64
 func (pqr *PrometheusQueryResponse) GetRequestRate() (float64, error) {
+	if pqr == nil || len(pqr.Data.Result) == 0 || len(pqr.Data.Result[0].Value) < 2 {
+		return 0, errors.New("The request metric is missing from the query result")
+	}
+
 	f, err := strconv.ParseFloat(pqr.Data.Result[0].Value[1].(string), 64)
 
 	return f, err
