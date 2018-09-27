@@ -285,6 +285,11 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 	status = "failed"
 
 	// check if hpa-scaler is enabled for this hpa and query is not empty and requests per replica larger than zero
+	if desiredState.Enabled == "true" {
+		minPodCountBasedOnPrometheusQuery = getMinPodCountBasedOnPrometheusQuery(kubeClient, hpa, initiator, desiredState)
+
+	}
+
 	if desiredState.Enabled == "true" && len(desiredState.PrometheusQuery) > 0 && desiredState.RequestsPerReplica > 0 {
 		minimumReplicasLowerBoundString := os.Getenv("MINIMUM_REPLICAS_LOWER_BOUND")
 		minimumReplicasLowerBound := int32(3)
@@ -386,6 +391,14 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 	status = "skipped"
 
 	return status, nil
+}
+
+// Returns what the minimum pod count should be based on the Prometheus query specified
+func getMinPodCountBasedOnPrometheusQuery(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, initiator string, desiredState HPAScalerState) (podCount int, err error) {
+}
+
+// Returns what the minimum pod count should be based on the current pod count and the 
+func getMinPodCountBasedOnCurrentPodCount(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, initiator string, desiredState HPAScalerState) (podCount int, err error) {
 }
 
 func applyJitter(input int) (output int) {
