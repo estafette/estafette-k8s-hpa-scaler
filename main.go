@@ -204,7 +204,7 @@ func main() {
 func processHorizontalPodAutoscaler(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, initiator string) (status string, err error) {
 	status = "failed"
 
-	if &hpa != nil && &hpa.Metadata != nil && &hpa.Metadata.Annotations != nil {
+	if hpa != nil && hpa.Metadata != nil && hpa.Metadata.Annotations != nil {
 
 		desiredState := getDesiredHorizontalPodAutoscalerState(hpa)
 
