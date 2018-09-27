@@ -36,16 +36,19 @@ const annotationHPAScalerPrometheusQuery = "estafette.io/hpa-scaler-prometheus-q
 const annotationHPAScalerRequestsPerReplica = "estafette.io/hpa-scaler-requests-per-replica"
 const annotationHPAScalerDelta = "estafette.io/hpa-scaler-delta"
 const annotationHPAScalerPrometheusServerURL = "estafette.io/hpa-scaler-prometheus-server-url"
+const annotationHPAScalerScaleDownMaxRatio = "estafette.io/hpa-scaler-scale-down-max-ratio"
 
 const annotationHPAScalerState = "estafette.io/hpa-scaler-state"
 
 // HPAScalerState represents the state of the HorizontalPodAutoscaler with respect to the Estafette k8s hpa scaler
 type HPAScalerState struct {
-	Enabled            string  `json:"enabled"`
-	PrometheusQuery    string  `json:"prometheusQuery"`
-	RequestsPerReplica float64 `json:"requestsPerReplica"`
-	Delta              float64 `json:"delta"`
-	LastUpdated        string  `json:"lastUpdated"`
+	Enabled             string  `json:"enabled"`
+	PrometheusQuery     string  `json:"prometheusQuery"`
+	RequestsPerReplica  float64 `json:"requestsPerReplica"`
+	Delta               float64 `json:"delta"`
+	LastUpdated         string  `json:"lastUpdated"`
+	PrometheusServerURL string  `json:"prometheusServerUrl"`
+	ScaleDownMaxRatio   float64 `json:"scaleDownMaxRatio"`
 }
 
 var (
@@ -226,10 +229,12 @@ func getDesiredHorizontalPodAutoscalerState(hpa *autoscalingv1.HorizontalPodAuto
 	if !ok {
 		state.Enabled = "false"
 	}
+
 	state.PrometheusQuery, ok = hpa.Metadata.Annotations[annotationHPAScalerPrometheusQuery]
 	if !ok {
 		state.PrometheusQuery = ""
 	}
+
 	requestsPerReplicaString, ok := hpa.Metadata.Annotations[annotationHPAScalerRequestsPerReplica]
 	if !ok {
 		state.RequestsPerReplica = 1
@@ -241,6 +246,7 @@ func getDesiredHorizontalPodAutoscalerState(hpa *autoscalingv1.HorizontalPodAuto
 			state.RequestsPerReplica = 1
 		}
 	}
+
 	deltaString, ok := hpa.Metadata.Annotations[annotationHPAScalerDelta]
 	if !ok {
 		state.Delta = 0
@@ -250,6 +256,25 @@ func getDesiredHorizontalPodAutoscalerState(hpa *autoscalingv1.HorizontalPodAuto
 			state.Delta = i
 		} else {
 			state.Delta = 0
+		}
+	}
+
+	prometheusServerURL, ok := hpa.Metadata.Annotations[annotationHPAScalerPrometheusServerURL]
+	if !ok {
+		prometheusServerURL = os.Getenv("PROMETHEUS_SERVER_URL")
+	}
+
+	state.PrometheusServerURL = prometheusServerURL
+
+	scaleDownMaxRatioString, ok := hpa.Metadata.Annotations[annotationHPAScalerScaleDownMaxRatio]
+	if !ok {
+		state.ScaleDownMaxRatio = 0
+	} else {
+		i, err := strconv.ParseFloat(scaleDownMaxRatioString, 64)
+		if err == nil {
+			state.ScaleDownMaxRatio = i
+		} else {
+			state.ScaleDownMaxRatio = 0
 		}
 	}
 
@@ -267,15 +292,9 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 			minimumReplicasLowerBound = int32(i)
 		}
 
-		var ok bool
-		prometheusServerURL, ok := hpa.Metadata.Annotations[annotationHPAScalerPrometheusServerURL]
-		if !ok {
-			prometheusServerURL = os.Getenv("PROMETHEUS_SERVER_URL")
-		}
-
 		// get request rate with prometheus query
 		// http://prometheus.production.svc/api/v1/query?query=sum%28rate%28nginx_http_requests_total%7Bhost%21~%22%5E%28%3F%3A%5B0-9.%5D%2B%29%24%22%2Clocation%3D%22%40searchfareapi_gcloud%22%7D%5B10m%5D%29%29%20by%20%28location%29
-		prometheusQueryURL := fmt.Sprintf("%v/api/v1/query?query=%v", prometheusServerURL, url.QueryEscape(desiredState.PrometheusQuery))
+		prometheusQueryURL := fmt.Sprintf("%v/api/v1/query?query=%v", desiredState.PrometheusServerURL, url.QueryEscape(desiredState.PrometheusQuery))
 		resp, err := pester.Get(prometheusQueryURL)
 		if err != nil {
 			log.Error().Err(err).Msgf("Executing prometheus query for hpa %v in namespace %v failed", *hpa.Metadata.Name, *hpa.Metadata.Namespace)
@@ -306,6 +325,7 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 			Float64("requestRate", requestRate).
 			Float64("desiredState.RequestsPerReplica", desiredState.RequestsPerReplica).
 			Float64("desiredState.Delta", desiredState.Delta).
+			Float64("desiredState.ScaleDownMaxRatio", desiredState.ScaleDownMaxRatio).
 			Float64("requestRate/desiredState.RequestsPerReplica", requestRate/desiredState.RequestsPerReplica).
 			Float64("desiredState.Delta + requestRate/desiredState.RequestsPerReplica", desiredState.Delta+requestRate/desiredState.RequestsPerReplica).
 			Float64("math.Ceil(desiredState.Delta + requestRate/desiredState.RequestsPerReplica)", math.Ceil(desiredState.Delta+requestRate/desiredState.RequestsPerReplica)).
