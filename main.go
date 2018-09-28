@@ -419,7 +419,15 @@ func getMinPodCountBasedOnPrometheusQuery(kubeClient *k8s.Client, hpa *autoscali
 func getMinPodCountBasedOnCurrentPodCount(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, initiator string, desiredState HPAScalerState) (podCount int32) {
 	actualNumberOfReplicas := *hpa.Status.CurrentReplicas
 
-	return int32(math.Ceil(float64(actualNumberOfReplicas) * desiredState.ScaleDownMaxRatio))
+	// We use Floor() because we want to opt on the side of scaling  down slower
+	maxScaleDown := int32(math.Floor(float64(actualNumberOfReplicas) * desiredState.ScaleDownMaxRatio))
+
+	// If the (number of replicas) * (scale down max ratio) is zero, that would completely prevent scaling down, which we don't want.
+	if maxScaleDown == 0 {
+		return actualNumberOfReplicas - 1
+	}
+
+	return actualNumberOfReplicas - maxScaleDown
 }
 
 func applyJitter(input int) (output int) {
