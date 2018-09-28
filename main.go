@@ -205,18 +205,16 @@ func main() {
 }
 
 func processHorizontalPodAutoscaler(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, initiator string) (status string, err error) {
-	status = "failed"
-
 	if hpa != nil && hpa.Metadata != nil && hpa.Metadata.Annotations != nil {
 
 		desiredState := getDesiredHorizontalPodAutoscalerState(hpa)
 
-		status, err = makeHorizontalPodAutoscalerChanges(kubeClient, hpa, initiator, desiredState)
+		status, err := makeHorizontalPodAutoscalerChanges(kubeClient, hpa, initiator, desiredState)
+
+		return status, err
 	}
 
-	status = "skipped"
-
-	return status, nil
+	return "skipped", nil
 }
 
 func getDesiredHorizontalPodAutoscalerState(hpa *autoscalingv1.HorizontalPodAutoscaler) (state HPAScalerState) {
@@ -420,7 +418,7 @@ func getMinPodCountBasedOnPrometheusQuery(kubeClient *k8s.Client, hpa *autoscali
 func getMinPodCountBasedOnCurrentPodCount(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, initiator string, desiredState HPAScalerState) (podCount int32) {
 	actualNumberOfReplicas := *hpa.Status.CurrentReplicas
 
-	// We use Floor() because we want to opt on the side of scaling  down slower
+	// We use Floor() because we want to opt on the side of scaling down slower.
 	maxScaleDown := int32(math.Floor(float64(actualNumberOfReplicas) * desiredState.ScaleDownMaxRatio))
 
 	// If the (number of replicas) * (scale down max ratio) is zero, that would completely prevent scaling down, which we don't want.
