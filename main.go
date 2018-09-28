@@ -309,6 +309,7 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 			Float64("desiredState.Delta + requestRate/desiredState.RequestsPerReplica", desiredState.Delta+requestRate/desiredState.RequestsPerReplica).
 			Float64("math.Ceil(desiredState.Delta + requestRate/desiredState.RequestsPerReplica)", math.Ceil(desiredState.Delta+requestRate/desiredState.RequestsPerReplica)).
 			Int32("int32(math.Ceil(desiredState.Delta + requestRate/desiredState.RequestsPerReplica))", int32(math.Ceil(desiredState.Delta+requestRate/desiredState.RequestsPerReplica))).
+			Int32("int32(math.Floor(float64(*hpa.Status.CurrentReplicas) * desiredState.ScaleDownMaxRatio))", int32(math.Floor(float64(*hpa.Status.CurrentReplicas)*desiredState.ScaleDownMaxRatio))).
 			Msgf("Calculated values for hpa %v in namespace %v", *hpa.Metadata.Name, *hpa.Metadata.Namespace)
 
 		// We pick the larger minimum of the two.
