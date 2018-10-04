@@ -264,13 +264,13 @@ func getDesiredHorizontalPodAutoscalerState(hpa *autoscalingv1.HorizontalPodAuto
 
 	scaleDownMaxRatioString, ok := hpa.Metadata.Annotations[annotationHPAScalerScaleDownMaxRatio]
 	if !ok {
-		state.ScaleDownMaxRatio = 0
+		state.ScaleDownMaxRatio = 1
 	} else {
 		i, err := strconv.ParseFloat(scaleDownMaxRatioString, 64)
 		if err == nil {
 			state.ScaleDownMaxRatio = i
 		} else {
-			state.ScaleDownMaxRatio = 0
+			state.ScaleDownMaxRatio = 1
 		}
 	}
 
