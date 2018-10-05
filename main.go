@@ -31,13 +31,13 @@ import (
 	autoscalingv1 "github.com/ericchiang/k8s/apis/autoscaling/v1"
 )
 
-const annotationHPAScaler string = "estafette.io/hpa-scaler"
-const annotationHPAScalerPrometheusQuery string = "estafette.io/hpa-scaler-prometheus-query"
-const annotationHPAScalerRequestsPerReplica string = "estafette.io/hpa-scaler-requests-per-replica"
-const annotationHPAScalerDelta string = "estafette.io/hpa-scaler-delta"
+const annotationHPAScaler = "estafette.io/hpa-scaler"
+const annotationHPAScalerPrometheusQuery = "estafette.io/hpa-scaler-prometheus-query"
+const annotationHPAScalerRequestsPerReplica = "estafette.io/hpa-scaler-requests-per-replica"
+const annotationHPAScalerDelta = "estafette.io/hpa-scaler-delta"
 const annotationHPAScalerPrometheusServerURL = "estafette.io/hpa-scaler-prometheus-server-url"
 
-const annotationHPAScalerState string = "estafette.io/hpa-scaler-state"
+const annotationHPAScalerState = "estafette.io/hpa-scaler-state"
 
 // HPAScalerState represents the state of the HorizontalPodAutoscaler with respect to the Estafette k8s hpa scaler
 type HPAScalerState struct {
@@ -134,7 +134,7 @@ func main() {
 	// create kubernetes api client
 	client, err := k8s.NewInClusterClient()
 	if err != nil {
-		log.Fatal().Err(err)
+		log.Fatal().Err(err).Msg("")
 	}
 
 	// start prometheus
@@ -165,21 +165,22 @@ func main() {
 			log.Info().Msg("Listing horizontal pod autoscalers for all namespaces...")
 			hpas, err := client.AutoscalingV1().ListHorizontalPodAutoscalers(context.Background(), k8s.AllNamespaces)
 			if err != nil {
-				log.Error().Err(err)
-			}
-			log.Info().Msgf("Cluster has %v horizontal pod autoscalers", len(hpas.Items))
+				log.Error().Err(err).Msg("Could not list the horizontal pod autoscalers in the clusters.")
+			} else {
+				log.Info().Msgf("Cluster has %v horizontal pod autoscalers", len(hpas.Items))
 
-			// loop all hpas
-			if hpas != nil && hpas.Items != nil {
-				for _, hpa := range hpas.Items {
-					waitGroup.Add(1)
-					status, err := processHorizontalPodAutoscaler(client, hpa, "poller")
-					hpaTotals.With(prometheus.Labels{"namespace": *hpa.Metadata.Namespace, "status": status, "initiator": "poller"}).Inc()
-					waitGroup.Done()
+				// loop all hpas
+				if hpas != nil && hpas.Items != nil {
+					for _, hpa := range hpas.Items {
+						waitGroup.Add(1)
+						status, err := processHorizontalPodAutoscaler(client, hpa, "poller")
+						hpaTotals.With(prometheus.Labels{"namespace": *hpa.Metadata.Namespace, "status": status, "initiator": "poller"}).Inc()
+						waitGroup.Done()
 
-					if err != nil {
-						log.Error().Err(err)
-						continue
+						if err != nil {
+							log.Warn().Err(err).Msg("")
+							continue
+						}
 					}
 				}
 			}
@@ -200,15 +201,24 @@ func main() {
 	log.Info().Msg("Shutting down...")
 }
 
-func applyJitter(input int) (output int) {
+func processHorizontalPodAutoscaler(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, initiator string) (status string, err error) {
+	status = "failed"
 
-	deviation := int(0.25 * float64(input))
+	if hpa != nil && hpa.Metadata != nil && hpa.Metadata.Annotations != nil {
 
-	return input - deviation + r.Intn(2*deviation)
+		desiredState := getDesiredHorizontalPodAutoscalerState(hpa)
+
+		status, err = makeHorizontalPodAutoscalerChanges(kubeClient, hpa, initiator, desiredState)
+
+		return
+	}
+
+	status = "skipped"
+
+	return status, nil
 }
 
 func getDesiredHorizontalPodAutoscalerState(hpa *autoscalingv1.HorizontalPodAutoscaler) (state HPAScalerState) {
-
 	var ok bool
 
 	// get annotations or set default value
@@ -247,17 +257,16 @@ func getDesiredHorizontalPodAutoscalerState(hpa *autoscalingv1.HorizontalPodAuto
 }
 
 func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, initiator string, desiredState HPAScalerState) (status string, err error) {
-
-	minimumReplicasLowerBoundString := os.Getenv("MINIMUM_REPLICAS_LOWER_BOUND")
-	minimumReplicasLowerBound := int32(3)
-	if i, err := strconv.ParseInt(minimumReplicasLowerBoundString, 0, 32); err != nil {
-		minimumReplicasLowerBound = int32(i)
-	}
-
 	status = "failed"
 
 	// check if hpa-scaler is enabled for this hpa and query is not empty and requests per replica larger than zero
 	if desiredState.Enabled == "true" && len(desiredState.PrometheusQuery) > 0 && desiredState.RequestsPerReplica > 0 {
+		minimumReplicasLowerBoundString := os.Getenv("MINIMUM_REPLICAS_LOWER_BOUND")
+		minimumReplicasLowerBound := int32(3)
+		if i, err := strconv.ParseInt(minimumReplicasLowerBoundString, 0, 32); err != nil {
+			minimumReplicasLowerBound = int32(i)
+		}
+
 		var ok bool
 		prometheusServerURL, ok := hpa.Metadata.Annotations[annotationHPAScalerPrometheusServerURL]
 		if !ok {
@@ -329,7 +338,7 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 		desiredState.LastUpdated = time.Now().Format(time.RFC3339)
 		hpaScalerStateByteArray, err := json.Marshal(desiredState)
 		if err != nil {
-			log.Error().Err(err)
+			log.Error().Err(err).Msg("")
 			return status, err
 		}
 		hpa.Metadata.Annotations[annotationHPAScalerState] = string(hpaScalerStateByteArray)
@@ -343,7 +352,7 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 		// update hpa, because the data and state annotation have changed
 		hpa, err = kubeClient.AutoscalingV1().UpdateHorizontalPodAutoscaler(context.Background(), hpa)
 		if err != nil {
-			log.Error().Err(err)
+			log.Error().Err(err).Msg("")
 			return status, err
 		}
 
@@ -359,20 +368,8 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 	return status, nil
 }
 
-func processHorizontalPodAutoscaler(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, initiator string) (status string, err error) {
+func applyJitter(input int) (output int) {
+	deviation := int(0.25 * float64(input))
 
-	status = "failed"
-
-	if &hpa != nil && &hpa.Metadata != nil && &hpa.Metadata.Annotations != nil {
-
-		desiredState := getDesiredHorizontalPodAutoscalerState(hpa)
-
-		status, err = makeHorizontalPodAutoscalerChanges(kubeClient, hpa, initiator, desiredState)
-
-		return
-	}
-
-	status = "skipped"
-
-	return status, nil
+	return input - deviation + r.Intn(2*deviation)
 }
