@@ -165,7 +165,7 @@ func main() {
 			log.Info().Msg("Listing horizontal pod autoscalers for all namespaces...")
 			hpas, err := client.AutoscalingV1().ListHorizontalPodAutoscalers(context.Background(), k8s.AllNamespaces)
 			if err != nil {
-				log.Error().Err(err).Msg("")
+				log.Error().Err(err).Msg("Could not list the horizontal pod autoscalers in the clusters.")
 			} else {
 				log.Info().Msgf("Cluster has %v horizontal pod autoscalers", len(hpas.Items))
 
@@ -178,7 +178,7 @@ func main() {
 						waitGroup.Done()
 
 						if err != nil {
-							log.Error().Err(err).Msg("")
+							log.Warn().Err(err).Msg("")
 							continue
 						}
 					}
