@@ -65,7 +65,18 @@ By tuning the `delta` and `requestsPerReplica` values it should be possible to f
 
 ### Limit the rate of scale down
 
-It can cause problems that the built in horizontal pod auto scaler can scale down a service too quickly if the CPU load drops. There is no built-in way to limit how big portion of the current pod count the auto scaler can remove in one step.  
+It can cause problems that the built in horizontal pod auto scaler can scale down a service too quickly if the CPU load drops. There is no built-in way to limit how big portion of the current pod count the auto scaler can remove in one step.
+
+The way the [Horizontal Pod Autoscaler](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/) works is that it periodically (by default, every 30 seconds) checks the target metric (for example the CPU-load) of the pods in our deployment, and if the pods are over or underutilized, it increases or decreases the replica count accordingly.  
+What this means in practice, is if we currently have 100 replicas, the current CPU-load is 10%, and the target CPU-load is 50%, then the auto scaler calculates the new replica count the following way:
+
+```
+newReplicaCount = 100 * (10 / 50)
+```
+
+So it scales the deployment down from 100 to 20 replicas.  
+Certain attributes (such as the frequency of checking the metrics, or the minimum wait time before subsequent scale downs) can be controlled globally on our cluster by passing in some flags to the controller manager. You can find more info about the possible options [here](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/).
+
 This can cause problems for services which are sensitive to being overloaded, and need time to scale back up, because a sudden drop in the CPU load can cause a degradation.
 
 To address this, you can set the `estafette.io/hpa-scaler-scale-down-max-ratio` annotation to control the maximum percentage of the pods that can be scaled down in one step.  
