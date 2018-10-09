@@ -36,16 +36,19 @@ const annotationHPAScalerPrometheusQuery = "estafette.io/hpa-scaler-prometheus-q
 const annotationHPAScalerRequestsPerReplica = "estafette.io/hpa-scaler-requests-per-replica"
 const annotationHPAScalerDelta = "estafette.io/hpa-scaler-delta"
 const annotationHPAScalerPrometheusServerURL = "estafette.io/hpa-scaler-prometheus-server-url"
+const annotationHPAScalerScaleDownMaxRatio = "estafette.io/hpa-scaler-scale-down-max-ratio"
 
 const annotationHPAScalerState = "estafette.io/hpa-scaler-state"
 
 // HPAScalerState represents the state of the HorizontalPodAutoscaler with respect to the Estafette k8s hpa scaler
 type HPAScalerState struct {
-	Enabled            string  `json:"enabled"`
-	PrometheusQuery    string  `json:"prometheusQuery"`
-	RequestsPerReplica float64 `json:"requestsPerReplica"`
-	Delta              float64 `json:"delta"`
-	LastUpdated        string  `json:"lastUpdated"`
+	Enabled             string  `json:"enabled"`
+	PrometheusQuery     string  `json:"prometheusQuery"`
+	RequestsPerReplica  float64 `json:"requestsPerReplica"`
+	Delta               float64 `json:"delta"`
+	LastUpdated         string  `json:"lastUpdated"`
+	PrometheusServerURL string  `json:"prometheusServerUrl"`
+	ScaleDownMaxRatio   float64 `json:"scaleDownMaxRatio"`
 }
 
 var (
@@ -202,20 +205,16 @@ func main() {
 }
 
 func processHorizontalPodAutoscaler(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, initiator string) (status string, err error) {
-	status = "failed"
-
 	if hpa != nil && hpa.Metadata != nil && hpa.Metadata.Annotations != nil {
 
 		desiredState := getDesiredHorizontalPodAutoscalerState(hpa)
 
-		status, err = makeHorizontalPodAutoscalerChanges(kubeClient, hpa, initiator, desiredState)
+		status, err := makeHorizontalPodAutoscalerChanges(kubeClient, hpa, initiator, desiredState)
 
-		return
+		return status, err
 	}
 
-	status = "skipped"
-
-	return status, nil
+	return "skipped", nil
 }
 
 func getDesiredHorizontalPodAutoscalerState(hpa *autoscalingv1.HorizontalPodAutoscaler) (state HPAScalerState) {
@@ -226,10 +225,12 @@ func getDesiredHorizontalPodAutoscalerState(hpa *autoscalingv1.HorizontalPodAuto
 	if !ok {
 		state.Enabled = "false"
 	}
+
 	state.PrometheusQuery, ok = hpa.Metadata.Annotations[annotationHPAScalerPrometheusQuery]
 	if !ok {
 		state.PrometheusQuery = ""
 	}
+
 	requestsPerReplicaString, ok := hpa.Metadata.Annotations[annotationHPAScalerRequestsPerReplica]
 	if !ok {
 		state.RequestsPerReplica = 1
@@ -241,6 +242,7 @@ func getDesiredHorizontalPodAutoscalerState(hpa *autoscalingv1.HorizontalPodAuto
 			state.RequestsPerReplica = 1
 		}
 	}
+
 	deltaString, ok := hpa.Metadata.Annotations[annotationHPAScalerDelta]
 	if !ok {
 		state.Delta = 0
@@ -253,6 +255,25 @@ func getDesiredHorizontalPodAutoscalerState(hpa *autoscalingv1.HorizontalPodAuto
 		}
 	}
 
+	prometheusServerURL, ok := hpa.Metadata.Annotations[annotationHPAScalerPrometheusServerURL]
+	if !ok {
+		prometheusServerURL = os.Getenv("PROMETHEUS_SERVER_URL")
+	}
+
+	state.PrometheusServerURL = prometheusServerURL
+
+	scaleDownMaxRatioString, ok := hpa.Metadata.Annotations[annotationHPAScalerScaleDownMaxRatio]
+	if !ok {
+		state.ScaleDownMaxRatio = 1
+	} else {
+		i, err := strconv.ParseFloat(scaleDownMaxRatioString, 64)
+		if err == nil {
+			state.ScaleDownMaxRatio = i
+		} else {
+			state.ScaleDownMaxRatio = 1
+		}
+	}
+
 	return
 }
 
@@ -260,60 +281,42 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 	status = "failed"
 
 	// check if hpa-scaler is enabled for this hpa and query is not empty and requests per replica larger than zero
-	if desiredState.Enabled == "true" && len(desiredState.PrometheusQuery) > 0 && desiredState.RequestsPerReplica > 0 {
+	if desiredState.Enabled == "true" {
 		minimumReplicasLowerBoundString := os.Getenv("MINIMUM_REPLICAS_LOWER_BOUND")
 		minimumReplicasLowerBound := int32(3)
 		if i, err := strconv.ParseInt(minimumReplicasLowerBoundString, 0, 32); err != nil {
 			minimumReplicasLowerBound = int32(i)
 		}
 
-		var ok bool
-		prometheusServerURL, ok := hpa.Metadata.Annotations[annotationHPAScalerPrometheusServerURL]
-		if !ok {
-			prometheusServerURL = os.Getenv("PROMETHEUS_SERVER_URL")
-		}
+		minPodCountBasedOnPrometheusQuery, requestRate, err := getMinPodCountBasedOnPrometheusQuery(kubeClient, hpa, initiator, desiredState)
 
-		// get request rate with prometheus query
-		// http://prometheus.production.svc/api/v1/query?query=sum%28rate%28nginx_http_requests_total%7Bhost%21~%22%5E%28%3F%3A%5B0-9.%5D%2B%29%24%22%2Clocation%3D%22%40searchfareapi_gcloud%22%7D%5B10m%5D%29%29%20by%20%28location%29
-		prometheusQueryURL := fmt.Sprintf("%v/api/v1/query?query=%v", prometheusServerURL, url.QueryEscape(desiredState.PrometheusQuery))
-		resp, err := pester.Get(prometheusQueryURL)
 		if err != nil {
-			log.Error().Err(err).Msgf("Executing prometheus query for hpa %v in namespace %v failed", *hpa.Metadata.Name, *hpa.Metadata.Namespace)
 			return status, err
 		}
 
-		defer resp.Body.Close()
-
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			log.Error().Err(err).Msgf("Reading prometheus query response body for hpa %v in namespace %v failed", *hpa.Metadata.Name, *hpa.Metadata.Namespace)
-			return status, err
-		}
-
-		queryResponse, err := UnmarshalPrometheusQueryResponse(body)
-		if err != nil {
-			log.Error().Err(err).Msgf("Unmarshalling prometheus query response body for hpa %v in namespace %v failed", *hpa.Metadata.Name, *hpa.Metadata.Namespace)
-			return status, err
-		}
-
-		requestRate, err := queryResponse.GetRequestRate()
-		if err != nil {
-			log.Error().Err(err).Msgf("Retrieving request rate from query response body for hpa %v in namespace %v failed", *hpa.Metadata.Name, *hpa.Metadata.Namespace)
-			return status, err
-		}
+		minPodCountBasedOnCurrentPodCount := getMinPodCountBasedOnCurrentPodCount(kubeClient, hpa, initiator, desiredState)
 
 		log.Debug().
 			Float64("requestRate", requestRate).
+			Int32("minPodCountBasedOnPrometheusQuery", minPodCountBasedOnPrometheusQuery).
+			Int32("minPodCountBasedOnCurrentPodCount", minPodCountBasedOnCurrentPodCount).
 			Float64("desiredState.RequestsPerReplica", desiredState.RequestsPerReplica).
 			Float64("desiredState.Delta", desiredState.Delta).
+			Float64("desiredState.ScaleDownMaxRatio", desiredState.ScaleDownMaxRatio).
 			Float64("requestRate/desiredState.RequestsPerReplica", requestRate/desiredState.RequestsPerReplica).
 			Float64("desiredState.Delta + requestRate/desiredState.RequestsPerReplica", desiredState.Delta+requestRate/desiredState.RequestsPerReplica).
 			Float64("math.Ceil(desiredState.Delta + requestRate/desiredState.RequestsPerReplica)", math.Ceil(desiredState.Delta+requestRate/desiredState.RequestsPerReplica)).
 			Int32("int32(math.Ceil(desiredState.Delta + requestRate/desiredState.RequestsPerReplica))", int32(math.Ceil(desiredState.Delta+requestRate/desiredState.RequestsPerReplica))).
+			Int32("int32(math.Floor(float64(*hpa.Status.CurrentReplicas) * desiredState.ScaleDownMaxRatio))", int32(math.Floor(float64(*hpa.Status.CurrentReplicas)*desiredState.ScaleDownMaxRatio))).
 			Msgf("Calculated values for hpa %v in namespace %v", *hpa.Metadata.Name, *hpa.Metadata.Namespace)
 
-		// calculate target # of replicas
-		targetNumberOfMinReplicas := int32(math.Ceil(desiredState.Delta + requestRate/desiredState.RequestsPerReplica))
+		// We pick the larger minimum of the two.
+		targetNumberOfMinReplicas := minPodCountBasedOnPrometheusQuery
+		if minPodCountBasedOnCurrentPodCount > targetNumberOfMinReplicas {
+			targetNumberOfMinReplicas = minPodCountBasedOnCurrentPodCount
+		}
+
+		// We only override the minimum pod count if we don't go below the hard-coded minimum.
 		if targetNumberOfMinReplicas < minimumReplicasLowerBound {
 			targetNumberOfMinReplicas = minimumReplicasLowerBound
 		}
@@ -366,6 +369,64 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 	status = "skipped"
 
 	return status, nil
+}
+
+// Returns what the minimum pod count should be based on the Prometheus query specified
+// If the Prometheus query is not specified, it returns 0
+func getMinPodCountBasedOnPrometheusQuery(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, initiator string, desiredState HPAScalerState) (minPodCount int32, requestRate float64, err error) {
+	minPodCount = 0
+	requestRate = 0
+
+	if len(desiredState.PrometheusQuery) > 0 && desiredState.RequestsPerReplica > 0 {
+		// get request rate with prometheus query
+		// http://prometheus.production.svc/api/v1/query?query=sum%28rate%28nginx_http_requests_total%7Bhost%21~%22%5E%28%3F%3A%5B0-9.%5D%2B%29%24%22%2Clocation%3D%22%40searchfareapi_gcloud%22%7D%5B10m%5D%29%29%20by%20%28location%29
+		prometheusQueryURL := fmt.Sprintf("%v/api/v1/query?query=%v", desiredState.PrometheusServerURL, url.QueryEscape(desiredState.PrometheusQuery))
+		resp, err := pester.Get(prometheusQueryURL)
+		if err != nil {
+			log.Error().Err(err).Msgf("Executing prometheus query for hpa %v in namespace %v failed", *hpa.Metadata.Name, *hpa.Metadata.Namespace)
+			return 0, 0, err
+		}
+
+		defer resp.Body.Close()
+
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			log.Error().Err(err).Msgf("Reading prometheus query response body for hpa %v in namespace %v failed", *hpa.Metadata.Name, *hpa.Metadata.Namespace)
+			return 0, 0, err
+		}
+
+		queryResponse, err := UnmarshalPrometheusQueryResponse(body)
+		if err != nil {
+			log.Error().Err(err).Msgf("Unmarshalling prometheus query response body for hpa %v in namespace %v failed", *hpa.Metadata.Name, *hpa.Metadata.Namespace)
+			return 0, 0, err
+		}
+
+		requestRate, err = queryResponse.GetRequestRate()
+		if err != nil {
+			log.Error().Err(err).Msgf("Retrieving request rate from query response body for hpa %v in namespace %v failed", *hpa.Metadata.Name, *hpa.Metadata.Namespace)
+			return 0, 0, err
+		}
+
+		// calculate target # of replicas
+		minPodCount = int32(math.Ceil(desiredState.Delta + requestRate/desiredState.RequestsPerReplica))
+	}
+
+	return minPodCount, requestRate, nil
+}
+
+// Returns what the minimum pod count should be based on the current pod count and the maximum scale down ratio
+func getMinPodCountBasedOnCurrentPodCount(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, initiator string, desiredState HPAScalerState) (podCount int32) {
+	actualNumberOfReplicas := *hpa.Status.CurrentReplicas
+
+	// We use Floor() because we want to opt on the side of scaling down slower.
+	maxScaleDown := int32(math.Floor(float64(actualNumberOfReplicas) * desiredState.ScaleDownMaxRatio))
+
+	// If the (number of replicas) * (scale down max ratio) is zero, that would completely prevent scaling down, which we don't want.
+	if maxScaleDown == 0 {
+		return actualNumberOfReplicas - 1
+	}
+
+	return actualNumberOfReplicas - maxScaleDown
 }
 
 func applyJitter(input int) (output int) {

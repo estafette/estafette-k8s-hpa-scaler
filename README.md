@@ -36,7 +36,13 @@ cat kubernetes.yaml | \
     envsubst | kubectl apply -f -
 ```
 
-Once the controller is up and running you can annotate your `HorizontalPodAutoscaler` as follows to make the `minReplicas` follow the request rate retrieved by the Prometheus query:
+Once the controller is up and running you can annotate your `HorizontalPodAutoscaler` to control the value of `minReplicas`.  
+There are two ways we can use the scaler.
+
+### Use a Prometheus query
+
+The first option is to specify a Prometheus query which will control the minimum number of pods.  
+You have to use the following annotations to specify the Prometheus query (which should usually be a query that retrieves the incoming request rate of the first API in your stack):
 
 ```yaml
 apiVersion: autoscaling/v1
@@ -56,3 +62,34 @@ minReplicas = Ceiling ( delta + ( resultFromQuery / requestsPerReplica ) )
 ```
 
 By tuning the `delta` and `requestsPerReplica` values it should be possible to follow the curve of the number of requests coming out of the Prometheus query closely and stay just below the number of replicas that the `HorizontalPodAutoscaler` would come up with under normal circumstances. If the curve is higher you're wasting resources, if it's much lower than it provides less safety.
+
+### Limit the rate of scale down
+
+It can cause problems that the built in horizontal pod auto scaler can scale down a service too quickly if the CPU load drops. There is no built-in way to limit how big portion of the current pod count the auto scaler can remove in one step.
+
+The way the [Horizontal Pod Autoscaler](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/) works is that it periodically (by default, every 30 seconds) checks the target metric (for example the CPU-load) of the pods in our deployment, and if the pods are over or underutilized, it increases or decreases the replica count accordingly.  
+What this means in practice, is if we currently have 100 replicas, the current CPU-load is 10%, and the target CPU-load is 50%, then the auto scaler calculates the new replica count the following way:
+
+```
+newReplicaCount = 100 * (10 / 50)
+```
+
+So it scales the deployment down from 100 to 20 replicas.  
+Certain attributes (such as the frequency of checking the metrics, or the minimum wait time before subsequent scale downs) can be controlled globally on our cluster by passing in some flags to the controller manager. You can find more info about the possible options [here](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/).
+
+This can cause problems for services which are sensitive to being overloaded, and need time to scale back up, because a sudden drop in the CPU load can cause a degradation.
+
+To address this, you can set the `estafette.io/hpa-scaler-scale-down-max-ratio` annotation to control the maximum percentage of the pods that can be scaled down in one step.  
+For example this is the setup to limit the maximum scale down to 20%.
+
+```yaml
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  annotations:
+    estafette.io/hpa-scaler: "true"
+    estafette.io/hpa-scaler-scale-down-max-ratio: "0.2"
+```
+
+Both the Prometheus-query and the percentage based approach work by periodically updating the `minReplicas` property of the auto scaler.  
+We can use both at the same time, in that case the controller will choose the larger minimimum value.
