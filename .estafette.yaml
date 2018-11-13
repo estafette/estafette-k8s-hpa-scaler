@@ -17,27 +17,29 @@ version:
 
 stages:
   build:
-    image: golang:1.10.2-alpine3.7
+    image: golang:1.11.2-alpine3.8
     workDir: /go/src/github.com/estafette/${ESTAFETTE_LABEL_APP}
+    env:
+      CGO_ENABLED: 0
+      GOOS: linux
     commands:
     - go test `go list ./... | grep -v /vendor/`
     - CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags "-X main.version=${ESTAFETTE_BUILD_VERSION} -X main.revision=${ESTAFETTE_GIT_REVISION} -X main.branch=${ESTAFETTE_GIT_BRANCH} -X main.buildDate=${ESTAFETTE_BUILD_DATETIME}" -o ./publish/${ESTAFETTE_LABEL_APP} .
 
   bake:
-    image: docker:18.03.1-ce
-    commands:
-    - cp Dockerfile ./publish
-    - cp /etc/ssl/certs/ca-certificates.crt ./publish
-    - docker build -t estafette/${ESTAFETTE_LABEL_APP}:${ESTAFETTE_BUILD_VERSION} ./publish
+    image: extensions/docker:dev
+    action: build
+    repositories:
+    - estafette
+    path: ./publish
+    copy:
+    - /etc/ssl/certs/ca-certificates.crt
 
   push-to-docker-hub:
-    image: docker:18.03.1-ce
-    env:
-      DOCKER_HUB_USERNAME: estafette.secret(r74nrQqDg4PsTcFs.Z4rYdNcCsLUffUGEM9nMXZzBvHo5NH4LBA==)
-      DOCKER_HUB_PASSWORD: estafette.secret(9a1Hi27C6D_7T92U.RkTR8dK6RISOiLH9BX7kindCGBgAXhpOpCFetPfmh8bk_Tog)
-    commands:
-    - docker login --username=${DOCKER_HUB_USERNAME} --password="${DOCKER_HUB_PASSWORD}"
-    - docker push estafette/${ESTAFETTE_LABEL_APP}:${ESTAFETTE_BUILD_VERSION}
+    image: extensions/docker:dev
+    action: push
+    repositories:
+    - estafette
     when:
       status == 'succeeded' &&
       branch == 'master' &&
@@ -45,15 +47,9 @@ stages:
 
   slack-notify:
     image: extensions/slack-build-status:dev
-    webhook: estafette.secret(pOJgEIdrzGwzat2P.VnYxtfCP_a4mu-PhdJKT9Zy1NK7cLTIfXekbGICOkPRKta8VlhJjG6b7lL0XAoilHpZbKQkzMlmdKsgN_PAKwlRrhzjj2M1Ca6AlcrJaIsDvVAJCVJmAd5N-3r-G)
-    name: ${ESTAFETTE_LABEL_APP}
+    workspace: estafette
     channels:
     - '#build-status'
     when:
+      status == 'succeeded' ||
       status == 'failed'
-
-releases:
-  tooling:
-  development:
-  staging:
-  production:
