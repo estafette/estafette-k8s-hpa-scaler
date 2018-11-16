@@ -284,7 +284,7 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 	if desiredState.Enabled == "true" {
 		minimumReplicasLowerBoundString := os.Getenv("MINIMUM_REPLICAS_LOWER_BOUND")
 		minimumReplicasLowerBound := int32(3)
-		if i, err := strconv.ParseInt(minimumReplicasLowerBoundString, 0, 32); err != nil {
+		if i, err := strconv.ParseInt(minimumReplicasLowerBoundString, 0, 32); err == nil {
 			minimumReplicasLowerBound = int32(i)
 		}
 
