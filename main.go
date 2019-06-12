@@ -421,12 +421,22 @@ func getMinPodCountBasedOnCurrentPodCount(kubeClient *k8s.Client, hpa *autoscali
 	// We use Floor() because we want to opt on the side of scaling down slower.
 	maxScaleDown := int32(math.Floor(float64(actualNumberOfReplicas) * desiredState.ScaleDownMaxRatio))
 
+	var minPodCount int32
+
 	// If the (number of replicas) * (scale down max ratio) is zero, that would completely prevent scaling down, which we don't want.
 	if maxScaleDown == 0 {
-		return actualNumberOfReplicas - 1
+		minPodCount = actualNumberOfReplicas - 1
+	} else {
+		minPodCount = actualNumberOfReplicas - maxScaleDown
 	}
 
-	return actualNumberOfReplicas - maxScaleDown
+	// NOTE: The max scale down ratio should never increase the minimum pod count to more than what's specified as the max number of replicas.
+	// (The minPodCount calculated here can only be larger than MaxReplicas during deployments, when we're surging. Otherwise it's always less.)
+	if minPodCount > *hpa.Spec.MaxReplicas {
+		return *hpa.Spec.MaxReplicas
+	}
+
+	return minPodCount
 }
 
 func applyJitter(input int) (output int) {
