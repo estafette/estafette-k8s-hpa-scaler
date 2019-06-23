@@ -38,18 +38,24 @@ const annotationHPAScalerRequestsPerReplica = "estafette.io/hpa-scaler-requests-
 const annotationHPAScalerDelta = "estafette.io/hpa-scaler-delta"
 const annotationHPAScalerPrometheusServerURL = "estafette.io/hpa-scaler-prometheus-server-url"
 const annotationHPAScalerScaleDownMaxRatio = "estafette.io/hpa-scaler-scale-down-max-ratio"
+const annotationHPAScalerEnableScaleDownRatioDeploymentChecking = "estafette.io/hpa-scaler-enable-scale-down-ratio-deployment-checking"
 
 const annotationHPAScalerState = "estafette.io/hpa-scaler-state"
 
 // HPAScalerState represents the state of the HorizontalPodAutoscaler with respect to the Estafette k8s hpa scaler
 type HPAScalerState struct {
-	Enabled             string  `json:"enabled"`
-	PrometheusQuery     string  `json:"prometheusQuery"`
-	RequestsPerReplica  float64 `json:"requestsPerReplica"`
-	Delta               float64 `json:"delta"`
-	LastUpdated         string  `json:"lastUpdated"`
-	PrometheusServerURL string  `json:"prometheusServerUrl"`
-	ScaleDownMaxRatio   float64 `json:"scaleDownMaxRatio"`
+	Enabled                                string  `json:"enabled"`
+	PrometheusQuery                        string  `json:"prometheusQuery"`
+	RequestsPerReplica                     float64 `json:"requestsPerReplica"`
+	Delta                                  float64 `json:"delta"`
+	LastUpdated                            string  `json:"lastUpdated"`
+	PrometheusServerURL                    string  `json:"prometheusServerUrl"`
+	ScaleDownMaxRatio                      float64 `json:"scaleDownMaxRatio"`
+	EnableScaleDownRatioDeploymentChecking string  `json:"enableScaleDownRatioDeploymentChecking"`
+}
+
+type replicaSetsHolder struct {
+	replicaSetList *extensionsv1beta1.ReplicaSetList
 }
 
 var (
@@ -165,31 +171,26 @@ func main() {
 		// loop indefinitely
 		for {
 
-			// get horizontal pod autoscalers for all namespaces
 			log.Info().Msg("Listing horizontal pod autoscalers for all namespaces...")
+			hpas, err := client.AutoscalingV1().ListHorizontalPodAutoscalers(context.Background(), k8s.AllNamespaces)
+			replicaSets := &replicaSetsHolder{replicaSetList: nil}
 
-			replicaSets, err := client.ExtensionsV1Beta1().ListReplicaSets(context.Background(), k8s.AllNamespaces)
 			if err != nil {
-				log.Error().Err(err).Msg("Could not list the replicasets in the cluster.")
+				log.Error().Err(err).Msg("Could not list the horizontal pod autoscalers in the cluster.")
 			} else {
-				hpas, err := client.AutoscalingV1().ListHorizontalPodAutoscalers(context.Background(), k8s.AllNamespaces)
-				if err != nil {
-					log.Error().Err(err).Msg("Could not list the horizontal pod autoscalers in the cluster.")
-				} else {
-					log.Info().Msgf("Cluster has %v horizontal pod autoscalers", len(hpas.Items))
+				log.Info().Msgf("Cluster has %v horizontal pod autoscalers", len(hpas.Items))
 
-					// loop all hpas
-					if hpas != nil && hpas.Items != nil {
-						for _, hpa := range hpas.Items {
-							waitGroup.Add(1)
-							status, err := processHorizontalPodAutoscaler(client, hpa, replicaSets, "poller")
-							hpaTotals.With(prometheus.Labels{"namespace": *hpa.Metadata.Namespace, "status": status, "initiator": "poller"}).Inc()
-							waitGroup.Done()
+				// loop all hpas
+				if hpas != nil && hpas.Items != nil {
+					for _, hpa := range hpas.Items {
+						waitGroup.Add(1)
+						status, err := processHorizontalPodAutoscaler(client, hpa, replicaSets, "poller")
+						hpaTotals.With(prometheus.Labels{"namespace": *hpa.Metadata.Namespace, "status": status, "initiator": "poller"}).Inc()
+						waitGroup.Done()
 
-							if err != nil {
-								log.Warn().Err(err).Msg("")
-								continue
-							}
+						if err != nil {
+							log.Warn().Err(err).Msg("")
+							continue
 						}
 					}
 				}
@@ -211,7 +212,7 @@ func main() {
 	log.Info().Msg("Shutting down...")
 }
 
-func processHorizontalPodAutoscaler(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, replicaSets *extensionsv1beta1.ReplicaSetList, initiator string) (status string, err error) {
+func processHorizontalPodAutoscaler(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, replicaSets *replicaSetsHolder, initiator string) (status string, err error) {
 	if hpa != nil && hpa.Metadata != nil && hpa.Metadata.Annotations != nil {
 		desiredState := getDesiredHorizontalPodAutoscalerState(hpa)
 
@@ -280,10 +281,15 @@ func getDesiredHorizontalPodAutoscalerState(hpa *autoscalingv1.HorizontalPodAuto
 		}
 	}
 
+	state.EnableScaleDownRatioDeploymentChecking, ok = hpa.Metadata.Annotations[annotationHPAScalerEnableScaleDownRatioDeploymentChecking]
+	if !ok {
+		state.EnableScaleDownRatioDeploymentChecking = "false"
+	}
+
 	return
 }
 
-func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, replicaSets *extensionsv1beta1.ReplicaSetList, initiator string, desiredState HPAScalerState) (status string, err error) {
+func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, replicaSets *replicaSetsHolder, initiator string, desiredState HPAScalerState) (status string, err error) {
 	status = "failed"
 
 	// check if hpa-scaler is enabled for this hpa and query is not empty and requests per replica larger than zero
@@ -302,7 +308,7 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 
 		minPodCountBasedOnCurrentPodCount := minPodCountBasedOnPrometheusQuery
 
-		if !isDeploymentInProgress(kubeClient, hpa, replicaSets) {
+		if desiredState.EnableScaleDownRatioDeploymentChecking != "true" || !isDeploymentInProgress(kubeClient, hpa, replicaSets) {
 			minPodCountBasedOnCurrentPodCount = getMinPodCountBasedOnCurrentPodCount(kubeClient, hpa, desiredState)
 		}
 
@@ -440,12 +446,16 @@ func getMinPodCountBasedOnCurrentPodCount(kubeClient *k8s.Client, hpa *autoscali
 }
 
 // Returns whether the application associated with the HPA is being deployed right now. (We consider an application being deployed if it has more than one non empty replicasets.)
-func isDeploymentInProgress(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, replicaSets *extensionsv1beta1.ReplicaSetList) bool {
+func isDeploymentInProgress(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, replicaSets *replicaSetsHolder) bool {
 	app := hpa.Metadata.Labels["app"]
+
+	if replicaSets.replicaSetList == nil {
+		replicaSets.replicaSetList = getReplicaSets(kubeClient)
+	}
 
 	var replicaSetsForApp []*extensionsv1beta1.ReplicaSet
 
-	for _, rs := range replicaSets.Items {
+	for _, rs := range replicaSets.replicaSetList.Items {
 		if rs.Metadata.Labels["app"] == app {
 			replicaSetsForApp = append(replicaSetsForApp, rs)
 		}
@@ -460,6 +470,19 @@ func isDeploymentInProgress(kubeClient *k8s.Client, hpa *autoscalingv1.Horizonta
 	}
 
 	return nonEmptyReplicaSetCount > 1
+}
+
+// Retrieves all the replica sets present in the cluster.
+func getReplicaSets(kubeClient *k8s.Client) *extensionsv1beta1.ReplicaSetList {
+	log.Info().Msg("Listing replicasets for all namespaces...")
+	replicaSets, err := kubeClient.ExtensionsV1Beta1().ListReplicaSets(context.Background(), k8s.AllNamespaces)
+
+	if err != nil {
+		log.Error().Err(err).Msg("Could not list the replicasets in the cluster.")
+	}
+
+	log.Info().Msgf("Cluster has %v replicasets", len(replicaSets.Items))
+	return replicaSets
 }
 
 func applyJitter(input int) (output int) {
