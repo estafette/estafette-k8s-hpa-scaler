@@ -308,7 +308,14 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 
 		minPodCountBasedOnCurrentPodCount := minPodCountBasedOnPrometheusQuery
 
-		if desiredState.EnableScaleDownRatioDeploymentChecking != "true" || !isDeploymentInProgress(kubeClient, hpa, replicaSets) {
+		deploymentInProgress := false
+
+		if desiredState.EnableScaleDownRatioDeploymentChecking == "true" {
+			// We only actually check if a deployment is in progress if this feature is explicitly enabled with an annotation.
+			deploymentInProgress = isDeploymentInProgress(kubeClient, hpa, replicaSets)
+		}
+
+		if !deploymentInProgress {
 			minPodCountBasedOnCurrentPodCount = getMinPodCountBasedOnCurrentPodCount(kubeClient, hpa, desiredState)
 		}
 
