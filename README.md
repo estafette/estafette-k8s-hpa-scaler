@@ -1,12 +1,11 @@
 # estafette-k8s-hpa-scaler
-This controller can set min and max pods of a HorizontalPodAutoscaler based on a prometheus query in order to prevent applications from scaling down if an upstream error happens
-
+This controller can set min and max pods of a HorizontalPodAutoscaler based on a Prometheus query in order to prevent applications from scaling down if an upstream error happens
 
 [![License](https://img.shields.io/github/license/estafette/estafette-k8s-hpa-scaler.svg)](https://github.com/estafette/estafette-k8s-hpa-scaler/blob/master/LICENSE)
 
 ## Why?
 
-With cpu based autoscaling an application can suddenly scale down if requests start erroring and the application consumes less cpu as a result of that; to recover after tackling the source of the error the application needs to scale up again. This controller sets the minimum number of pods calculated from a Prometheus query in order to act as a safety net in these unusual circumstances.
+With CPU based autoscaling an application can suddenly scale down if requests start erroring and the application consumes less CPU as a result of that; to recover after tackling the source of the error the application needs to scale up again. This controller sets the minimum number of pods calculated from a Prometheus query in order to act as a safety net in these unusual circumstances.
 
 Similar if your application is further down the call stack an error in one of the upstream applications can drop the number of requests coming into your application, again making it harder to recover after the issue is resolved. To guard yourself against those unwanted scale down actions you can use the request rate towards the outermost application as your source query to base your scale on.
 
@@ -91,5 +90,10 @@ metadata:
     estafette.io/hpa-scaler-scale-down-max-ratio: "0.2"
 ```
 
+*Note*: During a rolling deployment, due to the number of replicas surging, the replica count can suddenly increase to a much larger number than how it normally is, thus the scaler can set the minimum pod count higher than it's needed.  
+To avoid this, we have an experimental feature with which we don't run the pod-based scaling during a deployment. The way this is determined is we check how many `ReplicaSet`s with non-zero replica count exist for the application. If we find more than one such `ReplicaSet`s, we assume that a deployment is in progress, and the pod-based scaling is skipped.  
+Keep in mind that if there will be multiple non-empty `ReplicaSet`s for any other reason (for example because you run a canary pod for an extended time period), the pod-based scaling will be skipped until only one non-empty `ReplicaSet` remains.  
+To enable this behavior, you have to set the annotation `estafette.io/hpa-scaler-enable-scale-down-ratio-deployment-checking` on the HPA to `"true"`. Keep in mind that this can increase both the runtime of each iteration of the controller, and also its memory usage, because in order to do this, it has to retrieve all the ReplicaSets from the cluster.
+
 Both the Prometheus-query and the percentage based approach work by periodically updating the `minReplicas` property of the auto scaler.  
-We can use both at the same time, in that case the controller will choose the larger minimimum value.
+We can use both at the same time, in that case the controller will choose the larger minimum value.
