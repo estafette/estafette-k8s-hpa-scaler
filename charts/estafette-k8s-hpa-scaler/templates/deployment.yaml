@@ -3,7 +3,11 @@ kind: Deployment
 metadata:
   name: {{.Chart.Name | quote}}
   namespace: {{.Release.Namespace | quote}}
-  {{- include "labels" . | indent 2}}
+  labels:
+    app: {{.Chart.Name | quote}}
+    {{- if .Values.extraLabels }}
+{{ toYaml .Values.extraLabels | indent 4 }}
+    {{- end }}
 spec:
   replicas: 1
   strategy:
@@ -14,7 +18,13 @@ spec:
       app: {{.Chart.Name | quote}}
   template:
     metadata:
-      {{- include "labels" . | indent 6}}
+      labels:
+        app: {{.Chart.Name | quote}}
+        version: {{.Chart.Version | quote}}
+        appVersion: {{.Chart.AppVersion | quote}}
+        {{- if .Values.extraLabels }}
+{{ toYaml .Values.extraLabels | indent 8 }}
+        {{- end }}
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9101"
