@@ -2,7 +2,6 @@ apiVersion: extensions/v1beta1
 kind: Deployment
 metadata:
   name: {{.Chart.Name | quote}}
-  namespace: {{.Release.Namespace | quote}}
   labels:
     app: {{.Chart.Name | quote}}
     {{- if .Values.extraLabels }}
