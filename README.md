@@ -11,6 +11,17 @@ Similar if your application is further down the call stack an error in one of th
 
 ## Usage
 
+Deploy with Helm:
+
+```
+brew install kubernetes-helm
+helm init --history-max 25 --upgrade
+lint helm chart with helm lint chart/estafette-k8s-hpa-scaler
+chart helm package chart/estafette-k8s-hpa-scaler --version 0.1.0
+helm upgrade estafette-letsencrypt-certificate estafette-k8s-hpa-scaler-0.1.0.tgz --namespace estafette --install --dry-run --debug
+```
+Or deploy without Helm:
+
 As a Kubernetes administrator, you first need to deploy the `rbac.yaml` file which set role and permissions.
 
 ```
