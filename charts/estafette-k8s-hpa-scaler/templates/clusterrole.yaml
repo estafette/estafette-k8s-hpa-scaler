@@ -3,10 +3,7 @@ kind: ClusterRole
 metadata:
   name: {{.Chart.Name | quote}}
   labels:
-    app: {{.Chart.Name | quote}}
-    {{- if .Values.extraLabels }}
-{{ toYaml .Values.extraLabels | indent 4 }}
-    {{- end }}
+{{ include "commonLabels" .  | indent 4}}
 rules:
 - apiGroups: ["autoscaling"]
   resources:
