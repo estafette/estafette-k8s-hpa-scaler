@@ -10,5 +10,5 @@ heritage: {{ .Release.Service }}
 
 {{- define "completeLabels" -}}
 {{ include "commonLabels" . }}
-appVersion: {{.Chart.AppVersion | quote}}
+version: {{.Chart.AppVersion | quote}}
 {{- end -}}
