@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	stdlog "log"
 	"math"
 	"math/rand"
 	"net/http"
@@ -19,7 +18,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/rs/zerolog"
+	foundation "github.com/estafette/estafette-foundation"
 	"github.com/rs/zerolog/log"
 	"github.com/sethgrid/pester"
 
