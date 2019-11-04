@@ -59,6 +59,8 @@ type replicaSetsHolder struct {
 }
 
 var (
+	appgroup  string
+	app       string
 	version   string
 	branch    string
 	revision  string
@@ -113,27 +115,8 @@ func main() {
 	// parse command line parameters
 	flag.Parse()
 
-	// log as severity for stackdriver logging to recognize the level
-	zerolog.LevelFieldName = "severity"
-
-	// set some default fields added to all logs
-	log.Logger = zerolog.New(os.Stdout).With().
-		Timestamp().
-		Str("app", "estafette-k8s-hpa-scaler").
-		Str("version", version).
-		Logger()
-
-	// use zerolog for any logs sent via standard log library
-	stdlog.SetFlags(0)
-	stdlog.SetOutput(log.Logger)
-
-	// log startup message
-	log.Info().
-		Str("branch", branch).
-		Str("revision", revision).
-		Str("buildDate", buildDate).
-		Str("goVersion", goVersion).
-		Msg("Starting estafette-k8s-hpa-scaler...")
+	// configure json logging
+	foundation.InitLogging(appgroup, app, version, branch, revision, buildDate)
 
 	// check required envvars
 	prometheusServerURL := os.Getenv("PROMETHEUS_SERVER_URL")
