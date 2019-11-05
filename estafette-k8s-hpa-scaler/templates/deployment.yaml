@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "estafette-k8s-hpa-scaler.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "estafette-k8s-hpa-scaler.labels" . | indent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "estafette-k8s-hpa-scaler.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "estafette-k8s-hpa-scaler.name" . }}
+        version: {{ .Chart.AppVersion | quote }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9101"
+    spec:
+    {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      serviceAccountName: {{ template "estafette-k8s-hpa-scaler.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: "PROMETHEUS_SERVER_URL"
+              value: {{ .Values.prometheusServerUrl | quote }}
+            - name: "MINIMUM_REPLICAS_LOWER_BOUND"
+              value: {{ .Values.minimumReplicasLowerBound | quote }}
+            {{- toYaml .Values.extraEnv | nindent 12 }}
+          ports:
+            - name: metrics
+              containerPort: 9101
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 30
+            timeoutSeconds: 1
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      terminationGracePeriodSeconds: 300
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
