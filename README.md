@@ -9,42 +9,25 @@ With CPU based autoscaling an application can suddenly scale down if requests st
 
 Similar if your application is further down the call stack an error in one of the upstream applications can drop the number of requests coming into your application, again making it harder to recover after the issue is resolved. To guard yourself against those unwanted scale down actions you can use the request rate towards the outermost application as your source query to base your scale on.
 
-## Usage
+## Installation
 
-Deploy with Helm:
+Prepare using Helm:
 
 ```
 brew install kubernetes-helm
-helm init --history-max 25 --upgrade
-lint helm chart with helm lint chart/estafette-k8s-hpa-scaler
-chart helm package chart/estafette-k8s-hpa-scaler --version 0.1.0
-helm upgrade estafette-letsencrypt-certificate estafette-k8s-hpa-scaler-0.1.0.tgz --namespace estafette --install --dry-run --debug
-```
-Or deploy without Helm:
-
-As a Kubernetes administrator, you first need to deploy the `rbac.yaml` file which set role and permissions.
-
-```
-kubectl apply -f rbac.yaml
+kubectl -n kube-system create serviceaccount tiller
+kubectl create clusterrolebinding tiller --clusterrole=cluster-admin --serviceaccount=kube-system:tiller
+helm init --service-account tiller --wait
 ```
 
-Then deploy the application to Kubernetes cluster using the `kubernetes.yaml` manifest:
+Then install or upgrade with Helm:
 
 ```
-cat kubernetes.yaml | \
-    PROMETHEUS_SERVER_URL=http://prometheus.monitoring.svc \
-    MINIMUM_REPLICAS_LOWER_BOUND=3 \
-    APP_NAME=estafette-k8s-hpa-scaler \
-    NAMESPACE=estafette \
-    TEAM_NAME=myteam \
-    GO_PIPELINE_LABEL=1.0.5 \
-    VERSION=1.0.5 \
-    CPU_REQUEST=10m \
-    MEMORY_REQUEST=15Mi \
-    CPU_LIMIT=50m \
-    MEMORY_LIMIT=128Mi \
-    envsubst | kubectl apply -f -
+helm repo add estafette https://helm.estafette.io
+helm upgrade --install estafette-k8s-hpa-scaler --namespace estafette estafette/estafette-k8s-hpa-scaler
 ```
+
+## Usage
 
 Once the controller is up and running you can annotate your `HorizontalPodAutoscaler` to control the value of `minReplicas`.  
 There are two ways we can use the scaler.

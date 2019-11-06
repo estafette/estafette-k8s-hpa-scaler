@@ -1,0 +1,23 @@
+{{- if .Values.rbac.enable -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "estafette-k8s-hpa-scaler.fullname" . }}
+  labels:
+{{ include "estafette-k8s-hpa-scaler.labels" . | indent 4 }}
+rules:
+- apiGroups: ["autoscaling"] # "" indicates the core API group
+  resources:
+  - horizontalpodautoscalers
+  verbs:
+  - list
+  - update
+  - watch
+- apiGroups: ["extensions"] # "" indicates the core API group
+  resources:
+  - replicasets
+  verbs:
+  - list
+  - update
+  - watch
+{{- end -}}

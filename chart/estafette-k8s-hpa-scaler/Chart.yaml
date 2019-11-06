@@ -1,9 +1,0 @@
-apiVersion: v1
-appVersion: "1.1.2"
-description: Estafette Kubernetes HPA scaler
-name: estafette-k8s-hpa-scaler
-version: 0.1.0
-source:
-- https://github.com/estafette/estafette-k8s-hpa-scaler
-maintainers:
-- name: Estafette
