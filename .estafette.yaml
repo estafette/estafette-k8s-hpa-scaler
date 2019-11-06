@@ -74,8 +74,8 @@ stages:
     - helm init --service-account tiller --wait
     - helm install --name prometheus stable/prometheus --namespace monitoring --set alertmanager.enabled=false --set kubeStateMetrics.enabled=false --set nodeExporter.enabled=false --set pushgateway.enabled=false --set server.persistentVolume.enabled=false --wait
     - helm template --name ${ESTAFETTE_GIT_NAME} ${ESTAFETTE_GIT_NAME}-${ESTAFETTE_BUILD_VERSION_MAJOR}.${ESTAFETTE_BUILD_VERSION_MINOR}.0-pre-${ESTAFETTE_BUILD_VERSION_PATCH}.tgz --namespace estafette --set prometheusServerUrl=http://prometheus-server.monitoring.svc 
-    - helm upgrade --install ${ESTAFETTE_GIT_NAME} ${ESTAFETTE_GIT_NAME}-${ESTAFETTE_BUILD_VERSION_MAJOR}.${ESTAFETTE_BUILD_VERSION_MINOR}.0-pre-${ESTAFETTE_BUILD_VERSION_PATCH}.tgz --namespace estafette --set prometheusServerUrl=http://prometheus-server.monitoring.svc --wait || (kubectl logs -l app=${ESTAFETTE_GIT_NAME} -n estafette && exit 1)
-    - kubectl logs -l app=${ESTAFETTE_GIT_NAME} -n estafette
+    - helm upgrade --install ${ESTAFETTE_GIT_NAME} ${ESTAFETTE_GIT_NAME}-${ESTAFETTE_BUILD_VERSION_MAJOR}.${ESTAFETTE_BUILD_VERSION_MINOR}.0-pre-${ESTAFETTE_BUILD_VERSION_PATCH}.tgz --namespace estafette --set prometheusServerUrl=http://prometheus-server.monitoring.svc --wait || (kubectl logs -l app.kubernetes.io/name=${ESTAFETTE_GIT_NAME},app.kubernetes.io/instance=${ESTAFETTE_GIT_NAME} -n estafette && exit 1)
+    - kubectl logs -l app.kubernetes.io/name=${ESTAFETTE_GIT_NAME},app.kubernetes.io/instance=${ESTAFETTE_GIT_NAME} -n estafette
 
   clone-charts-repo:
     image: extensions/git-clone:dev
