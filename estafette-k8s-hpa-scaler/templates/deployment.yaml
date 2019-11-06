@@ -9,12 +9,12 @@ spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: {{ include "estafette-k8s-hpa-scaler.name" . }}
+      app.kubernetes.io/name: {{ include "estafette-k8s-hpa-scaler.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
       labels:
-        app: {{ include "estafette-k8s-hpa-scaler.name" . }}
-        version: {{ .Chart.AppVersion | quote }}
+{{ include "estafette-k8s-hpa-scaler.labels" . | indent 8 }}
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9101"
@@ -37,7 +37,10 @@ spec:
               value: {{ .Values.prometheusServerUrl | quote }}
             - name: "MINIMUM_REPLICAS_LOWER_BOUND"
               value: {{ .Values.minimumReplicasLowerBound | quote }}
-            {{- toYaml .Values.extraEnv | nindent 12 }}
+            {{- range $key, $value := .Values.extraEnv }}
+            - name: {{ $key }}
+              value: {{ $value }}
+            {{- end }}
           ports:
             - name: metrics
               containerPort: 9101
