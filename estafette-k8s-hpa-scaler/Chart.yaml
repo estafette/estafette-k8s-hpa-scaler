@@ -3,4 +3,5 @@ appVersion: "1.0"
 description: Kubernetes controller to set minimum replicas from a Prometheus query on annotated HorizontalPodAutoscalers to avoid collapsing deployments in case of errors
 name: estafette-k8s-hpa-scaler
 version: 0.1.0
-icon: https://estafette.io/apple-touch-icon.png
+home: https://helm.estafette.io
+icon: https://helm.estafette.io/icon.png
