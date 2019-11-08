@@ -2,6 +2,20 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
+#
+# APPLICATION SETTINGS
+#
+
+# the url to the prometheus server running in the same cluster to be queried for annotated horizontalpodautoscalers
+prometheusServerUrl: ""
+
+# with this you can set the absolute minimum set regardless of the outcome of the prometheus query; with this you can guarantee 3 replicas in production, while using 1 replica for test environments
+minimumReplicasLowerBound: 3
+
+#
+# GENERIC SETTINGS
+#
+
 replicaCount: 1
 
 image:
@@ -58,12 +72,6 @@ affinity:
           operator: In
           values:
           - "true"
-
-# the url to the prometheus server running in the same cluster to be queried for annotated horizontalpodautoscalers
-prometheusServerUrl: ""
-
-# with this you can set the absolute minimum set regardless of the outcome of the prometheus query; with this you can guarantee 3 replicas in production, while using 1 replica for test environments
-minimumReplicasLowerBound: 3
 
 # pass (additional) arguments to the container
 extraArgs: []
