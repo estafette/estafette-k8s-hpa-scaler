@@ -10,3 +10,7 @@
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
+
+# ignore build and helm artifacts
+/estafette-k8s-hpa-scaler
+/estafette-k8s-hpa-scaler-*.tgz
