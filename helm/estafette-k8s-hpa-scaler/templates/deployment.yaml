@@ -44,6 +44,8 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           env:
+            - name: "ESTAFETTE_LOG_FORMAT"
+              value: "{{ .Values.logFormat }}"
             - name: "PROMETHEUS_SERVER_URL"
               value: {{ .Values.prometheusServerUrl | quote }}
             - name: "MINIMUM_REPLICAS_LOWER_BOUND"
