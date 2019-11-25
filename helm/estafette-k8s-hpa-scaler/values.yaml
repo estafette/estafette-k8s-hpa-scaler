@@ -12,6 +12,9 @@ prometheusServerUrl: ""
 # with this you can set the absolute minimum set regardless of the outcome of the prometheus query; with this you can guarantee 3 replicas in production, while using 1 replica for test environments
 minimumReplicasLowerBound: 3
 
+# the following log formats are available: plaintext, console, json, stackdriver, v3 (see https://github.com/estafette/estafette-foundation for more info)
+logFormat: plaintext
+
 #
 # GENERIC SETTINGS
 #

@@ -114,8 +114,8 @@ func main() {
 	// parse command line parameters
 	flag.Parse()
 
-	// configure json logging
-	foundation.InitLogging(appgroup, app, version, branch, revision, buildDate)
+	// init log format from envvar ESTAFETTE_LOG_FORMAT
+	foundation.InitLoggingFromEnv(appgroup, app, version, branch, revision, buildDate)
 
 	// check required envvars
 	prometheusServerURL := os.Getenv("PROMETHEUS_SERVER_URL")
