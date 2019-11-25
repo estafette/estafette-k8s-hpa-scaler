@@ -37,7 +37,7 @@ func UnmarshalPrometheusQueryResponse(responseBody []byte) (queryResponse Promet
 		return
 	}
 
-	log.Debug().Interface("queryResponse", queryResponse).Msg("Successfully unmarshalled prometheus query response")
+	log.Debug().Str("queryResponse", string(responseBody)).Msg("Successfully unmarshalled prometheus query response")
 
 	return
 }
