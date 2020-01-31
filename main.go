@@ -3,27 +3,23 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"math"
 	"math/rand"
-	"net/http"
 	"net/url"
 	"os"
-	"os/signal"
 	"runtime"
 	"strconv"
 	"sync"
-	"syscall"
 	"time"
 
+	"github.com/alecthomas/kingpin"
 	foundation "github.com/estafette/estafette-foundation"
 	"github.com/rs/zerolog/log"
 	"github.com/sethgrid/pester"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/ericchiang/k8s"
 
@@ -68,7 +64,7 @@ var (
 )
 
 var (
-	addr = flag.String("listen-address", ":9101", "The address to listen on for HTTP requests.")
+	prometheusServerURL = kingpin.Flag("prometheus-server-url", "The url to reach the Prometheus server.").Envar("PROMETHEUS_SERVER_URL").Required().String()
 
 	// seed random number
 	r = rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -112,16 +108,13 @@ func init() {
 func main() {
 
 	// parse command line parameters
-	flag.Parse()
+	kingpin.Parse()
 
 	// init log format from envvar ESTAFETTE_LOG_FORMAT
-	foundation.InitLoggingFromEnv(appgroup, app, version, branch, revision, buildDate)
+	foundation.InitLoggingFromEnv(foundation.NewApplicationInfo(appgroup, app, version, branch, revision, buildDate))
 
-	// check required envvars
-	prometheusServerURL := os.Getenv("PROMETHEUS_SERVER_URL")
-	if prometheusServerURL == "" {
-		log.Fatal().Msg("PROMETHEUS_SERVER_URL is required. Please set PROMETHEUS_SERVER_URL environment variable to your Prometheus server service url.")
-	}
+	// init /liveness endpoint
+	foundation.InitLiveness()
 
 	// create kubernetes api client
 	client, err := k8s.NewInClusterClient()
@@ -129,25 +122,9 @@ func main() {
 		log.Fatal().Err(err).Msg("")
 	}
 
-	// start prometheus
-	go func() {
-		log.Debug().
-			Str("port", *addr).
-			Msg("Serving Prometheus metrics...")
+	foundation.InitMetrics()
 
-		http.Handle("/metrics", promhttp.Handler())
-
-		if err := http.ListenAndServe(*addr, nil); err != nil {
-			log.Fatal().Err(err).Msg("Starting Prometheus listener failed")
-		}
-	}()
-
-	// define channel used to gracefully shutdown the application
-	gracefulShutdown := make(chan os.Signal)
-
-	signal.Notify(gracefulShutdown, syscall.SIGTERM, syscall.SIGINT)
-
-	waitGroup := &sync.WaitGroup{}
+	gracefulShutdown, waitGroup := foundation.InitGracefulShutdownHandling()
 
 	go func(waitGroup *sync.WaitGroup) {
 		// loop indefinitely
@@ -185,13 +162,7 @@ func main() {
 		}
 	}(waitGroup)
 
-	signalReceived := <-gracefulShutdown
-	log.Info().
-		Msgf("Received signal %v. Waiting for running tasks to finish...", signalReceived)
-
-	waitGroup.Wait()
-
-	log.Info().Msg("Shutting down...")
+	foundation.HandleGracefulShutdown(gracefulShutdown, waitGroup)
 }
 
 func processHorizontalPodAutoscaler(kubeClient *k8s.Client, hpa *autoscalingv1.HorizontalPodAutoscaler, replicaSets *replicaSetsHolder, initiator string) (status string, err error) {
@@ -244,12 +215,12 @@ func getDesiredHorizontalPodAutoscalerState(hpa *autoscalingv1.HorizontalPodAuto
 		}
 	}
 
-	prometheusServerURL, ok := hpa.Metadata.Annotations[annotationHPAScalerPrometheusServerURL]
+	prometheusServerURLState, ok := hpa.Metadata.Annotations[annotationHPAScalerPrometheusServerURL]
 	if !ok {
-		prometheusServerURL = os.Getenv("PROMETHEUS_SERVER_URL")
+		prometheusServerURLState = *prometheusServerURL
 	}
 
-	state.PrometheusServerURL = prometheusServerURL
+	state.PrometheusServerURL = prometheusServerURLState
 
 	scaleDownMaxRatioString, ok := hpa.Metadata.Annotations[annotationHPAScalerScaleDownMaxRatio]
 	if !ok {
