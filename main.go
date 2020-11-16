@@ -331,7 +331,6 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 
 		// update hpa, because the data and state annotation have changed
 		err = kubeClient.Update(context.Background(), hpa)
-		// hpa, err = kubeClient.AutoscalingV1().UpdateHorizontalPodAutoscaler(context.Background(), hpa)
 		if err != nil {
 			log.Error().Err(err).Msg("")
 			return status, err
