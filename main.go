@@ -23,8 +23,8 @@ import (
 
 	"github.com/ericchiang/k8s"
 
+	appsv1 "github.com/ericchiang/k8s/apis/apps/v1"
 	autoscalingv1 "github.com/ericchiang/k8s/apis/autoscaling/v1"
-	extensionsv1beta1 "github.com/ericchiang/k8s/apis/extensions/v1beta1"
 )
 
 const annotationHPAScaler = "estafette.io/hpa-scaler"
@@ -50,7 +50,7 @@ type HPAScalerState struct {
 }
 
 type replicaSetsHolder struct {
-	replicaSetList *extensionsv1beta1.ReplicaSetList
+	replicaSetList *appsv1.ReplicaSetList
 }
 
 var (
@@ -131,7 +131,8 @@ func main() {
 		for {
 
 			log.Info().Msg("Listing horizontal pod autoscalers for all namespaces...")
-			hpas, err := client.AutoscalingV1().ListHorizontalPodAutoscalers(context.Background(), k8s.AllNamespaces)
+			var hpas autoscalingv1.HorizontalPodAutoscalerList
+			err := client.List(context.Background(), k8s.AllNamespaces, &hpas)
 			replicaSets := &replicaSetsHolder{replicaSetList: nil}
 
 			if err != nil {
@@ -140,7 +141,7 @@ func main() {
 				log.Info().Msgf("Cluster has %v horizontal pod autoscalers", len(hpas.Items))
 
 				// loop all hpas
-				if hpas != nil && hpas.Items != nil {
+				if hpas.Items != nil {
 					for _, hpa := range hpas.Items {
 						waitGroup.Add(1)
 						status, err := processHorizontalPodAutoscaler(client, hpa, replicaSets, "poller")
@@ -329,7 +330,8 @@ func makeHorizontalPodAutoscalerChanges(kubeClient *k8s.Client, hpa *autoscaling
 		}
 
 		// update hpa, because the data and state annotation have changed
-		hpa, err = kubeClient.AutoscalingV1().UpdateHorizontalPodAutoscaler(context.Background(), hpa)
+		err = kubeClient.Update(context.Background(), hpa)
+		// hpa, err = kubeClient.AutoscalingV1().UpdateHorizontalPodAutoscaler(context.Background(), hpa)
 		if err != nil {
 			log.Error().Err(err).Msg("")
 			return status, err
@@ -413,7 +415,7 @@ func isDeploymentInProgress(kubeClient *k8s.Client, hpa *autoscalingv1.Horizonta
 		replicaSets.replicaSetList = getReplicaSets(kubeClient)
 	}
 
-	var replicaSetsForApp []*extensionsv1beta1.ReplicaSet
+	var replicaSetsForApp []*appsv1.ReplicaSet
 
 	for _, rs := range replicaSets.replicaSetList.Items {
 		if rs.Metadata.Labels["app"] == app {
@@ -433,16 +435,17 @@ func isDeploymentInProgress(kubeClient *k8s.Client, hpa *autoscalingv1.Horizonta
 }
 
 // Retrieves all the replica sets present in the cluster.
-func getReplicaSets(kubeClient *k8s.Client) *extensionsv1beta1.ReplicaSetList {
+func getReplicaSets(kubeClient *k8s.Client) *appsv1.ReplicaSetList {
 	log.Info().Msg("Listing replicasets for all namespaces...")
-	replicaSets, err := kubeClient.ExtensionsV1Beta1().ListReplicaSets(context.Background(), k8s.AllNamespaces)
+	var replicaSets appsv1.ReplicaSetList
+	err := kubeClient.List(context.Background(), k8s.AllNamespaces, &replicaSets)
 
 	if err != nil {
 		log.Error().Err(err).Msg("Could not list the replicasets in the cluster.")
 	}
 
 	log.Info().Msgf("Cluster has %v replicasets", len(replicaSets.Items))
-	return replicaSets
+	return &replicaSets
 }
 
 func applyJitter(input int) (output int) {
