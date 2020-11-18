@@ -4,10 +4,10 @@ go 1.12
 
 require (
 	github.com/alecthomas/kingpin v2.2.6+incompatible
-	github.com/estafette/estafette-foundation v0.0.51
+	github.com/estafette/estafette-foundation v0.0.68
 	github.com/prometheus/client_golang v0.9.2
 	github.com/rs/zerolog v1.17.2
-	github.com/sethgrid/pester v0.0.0-20180430140037-03e26c9abbbf
+	github.com/sethgrid/pester v1.1.0
 	github.com/stretchr/testify v1.4.0
 	k8s.io/api v0.17.0
 	k8s.io/apimachinery v0.17.0
