@@ -53,13 +53,13 @@ securityContext: {}
   # runAsNonRoot: true
   # runAsUser: 1000
 
-resources:
-  requests:
-    cpu: 10m
-    memory: 50Mi
-  limits:
-    cpu: 50m
-    memory: 100Mi
+resources: {}
+  # requests:
+  #   cpu: 10m
+  #   memory: 50Mi
+  # limits:
+  #   cpu: 50m
+  #   memory: 100Mi
 
 nodeSelector: {}
 
